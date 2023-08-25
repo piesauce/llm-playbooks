@@ -1,0 +1,56 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+default_language_version:
+    python: python3.9
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.0.1
+    hooks:
+    -   id: trailing-whitespace
+    -   id: end-of-file-fixer
+    -   id: check-yaml
+        args: ['--allow-multiple-documents']
+    -   id: check-ast
+    -   id: check-added-large-files
+    -   id: check-case-conflict
+    -   id: check-json
+    -   id: check-merge-conflict
+    -   id: check-symlinks
+    -   id: check-toml
+    -   id: check-xml
+    -   id: debug-statements
+    -   id: destroyed-symlinks
+    -   id: detect-private-key
+    -   id: mixed-line-ending
+    -   id: name-tests-test
+-   repo: https://github.com/pycqa/flake8
+    rev: '4.0.1'
+    hooks:
+    -   id: flake8
+        additional_dependencies: [flake8-bugbear]
+        args: # arguments to configure flake8
+        # these are errors that will be ignored by flake8
+        # check out their meaning here
+        # https://pycodestyle.pycqa.org/en/latest/intro.html#error-codes
+        # https://flake8.pycqa.org/en/3.1.1/user/error-codes.html
+        # E266 - too many leading ‘#’ for block comment
+        # E501 - line too long (82 > 79 characters, we use black to autoformat)
+        # E203 whitespace before ':'
+        - "--ignore=E266,E501,W503,E203"
+        # __init__.py files usually contain unused imports
+        - "--per-file-ignores=__init__.py:F401"
+-   repo: https://github.com/psf/black
+    rev: 22.3.0
+    hooks:
+    -   id: black
+        args: [--safe, --quiet]
+-   repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.7.2.1
+    hooks:
+    -   id: shellcheck
+-   repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+    -   id: isort
+        name: isort (python)
+        args: ["--profile", "black", "--filter-files"]
