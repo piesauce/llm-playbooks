@@ -12,6 +12,7 @@ repos:
         args: ['--allow-multiple-documents']
     -   id: check-ast
     -   id: check-added-large-files
+        args: ['--maxkb=4096']
     -   id: check-case-conflict
     -   id: check-json
     -   id: check-merge-conflict
@@ -22,7 +23,6 @@ repos:
     -   id: destroyed-symlinks
     -   id: detect-private-key
     -   id: mixed-line-ending
-    -   id: name-tests-test
 -   repo: https://github.com/pycqa/flake8
     rev: '4.0.1'
     hooks:
