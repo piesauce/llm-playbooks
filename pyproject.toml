@@ -1,17 +1,18 @@
 [tool.poetry]
-name = "hello-poetry"
+name = "llm-playbooks"
 version = "0.1.0"
-description = "Poetry Template"
-authors = ["John Doe <john.doe@example.com>"]
+description = "LLM PLaybooks"
+authors = [
+    "Suhas Pai <piesauce@gmail.com>",
+    "Yenson Lau <yenson.lau@gmail.com>",
+]
 readme = "README.md"
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.13"
-llm_playbooks = { path = "../../", develop = true }
 
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.24.4"
-ipython = "^8.25.0"
 
 [build-system]
 requires = ["poetry-core"]
