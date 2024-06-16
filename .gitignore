@@ -1,5 +1,5 @@
 # Byte-compiled files
-__pycache__
+**/__pycache__
 
 # Distribution / packaging
 .Python
@@ -32,14 +32,7 @@ ipython_config.py
 # pyenv
 .python-version
 
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+**/.venv
 
 # VSCode stuff
 .vscode
