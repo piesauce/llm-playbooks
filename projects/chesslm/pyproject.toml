@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "chesslm"
+version = "0.1.0"
+description = "Language models for chess"
+authors = ["Yenson Lau <yenson.lau@example.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.13"
+llm_playbooks = { path = "../../", develop = true }
+
+[tool.poetry.group.dev.dependencies]
+poethepoet = "^0.24.4"
+ipython = "^8.25.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
