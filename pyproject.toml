@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "llm-playbooks"
+version = "0.1.0"
+description = "LLM PLaybooks"
+authors = [
+    "Suhas Pai <piesauce@gmail.com>",
+    "Yenson Lau <yenson.lau@gmail.com>",
+]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.13"
+
+[tool.poetry.group.dev.dependencies]
+poethepoet = "^0.24.4"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
