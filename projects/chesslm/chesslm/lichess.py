@@ -6,22 +6,24 @@ from typing import Callable, Optional, TypeVar
 from pydantic import BaseModel
 from tqdm import tqdm
 
-RE_PGN_METADATA = re.compile(r'\[(\w+) "(.+)"\]\n?')
+RE_ENTRY_METADATA = re.compile(r'\[(\w+) "(.+)"\]\n?')
+RE_SEQUENCE_TURN_METADATA = re.compile(r" \{ \[[^\]]+\] \} ")
+RE_SEQUENCE_TURN_CONTINUATION = re.compile(r" \d+\.{3}")
 RE_LICHESS_TOURNAMENT = re.compile(r" https://lichess.org/tournament/\w+")
 
 T = TypeVar("T")
 
 
 class LichessEntry(BaseModel):
-    event: str  # [Event "Rated Bullet game"]
-    url: str  # [Site "https://lichess.org/rklpc7mk"]
-    result: str  # [Result "0-1"]
+    event: str  # [Event "Rated Classical game"]
+    url: str  # [Site "https://lichess.org/j1dkb5dw"]
+    result: str  # [Result "1-0"]
     utc_timestamp: str  # [UTCDate "2012.12.31"] [UTCTime "23:04:57"]
     white_elo: str  # [WhiteElo "1824"]
     black_elo: str  # [BlackElo "1973"]
     time_control: str  # [TimeControl "60+1"]
     termination: str  # [Termination "Normal"]
-    sequence: str  # 1. e4 e5 2. Nf3 Nc6 3. Bc4 Nf6 ... 11. Nxc7+ 1-0
+    sequence: str  # 1. e4 e6 2. d4 b6 3. a3 Bb7 ... 13. Qe8# 1-0
 
     @property
     def site(self) -> str:
@@ -33,6 +35,25 @@ class LichessEntry(BaseModel):
             return (int(self.white_elo) + int(self.black_elo)) / 2
         else:
             return float("nan")
+
+    @property
+    def sequence_has_eval(self) -> bool:
+        return "%eval" in self.sequence
+
+    @property
+    def sequence_has_metadata(self) -> bool:
+        return " { [%" in self.sequence
+
+    @property
+    def plain_sequence(self) -> str:
+        if self.sequence_has_metadata:
+            sequence = RE_SEQUENCE_TURN_METADATA.sub(" ", self.sequence)
+            return RE_SEQUENCE_TURN_CONTINUATION.sub(" ", sequence)
+        return self.sequence
+
+    @property
+    def ends_in_checkmate(self) -> bool:
+        return self.sequence.endswith(f"# {self.result}")
 
 
 class LichessPGNReader:
@@ -55,7 +76,7 @@ class LichessPGNReader:
 
     @staticmethod
     def parse_metadata(line: str) -> tuple[str, str]:
-        if not (match := RE_PGN_METADATA.match(line)):
+        if not (match := RE_ENTRY_METADATA.match(line)):
             raise ValueError(f"could not parse metadata from '{line}'")
         key, value = match.group(1), match.group(2)
         return key, value
@@ -66,8 +87,8 @@ class LichessPGNReader:
         self.last_bytes_read = self.bytes_read
         self.lastlines: list[str] = []
 
-        while (line := self.nextline) and (line.startswith("[")):
-            # all of this is metadata or blank
+        # metadata or blank lines
+        while (line := self.nextline) and line.startswith("["):
             self.lastlines.append(line)
             key, value = self.parse_metadata(line)
             if key in d:
@@ -75,16 +96,29 @@ class LichessPGNReader:
             else:
                 d[key] = value
 
+        # if no lines read, return empty dict
         if not self.lastlines:
-            return {}  # no lines read, return empty dict
+            return {}
 
+        assert line == "\n", "line after metadata should be a blank line"
+        self.lastlines.append(line)
+
+        # start of move sequence
         if line := self.nextline:
             self.lastlines.append(line)
             d["_sequence"] = line
         else:
             raise ValueError("move sequence not found")
 
-        assert (line := self.nextline) == "\n", "final line should be a blank line"
+        # newer data will have several lines for the move sequence
+        while len((line := self.nextline).removesuffix("\n")):
+            self.lastlines.append(line)
+            d["_sequence"] += line
+
+        # don't need any newlines in the move sequence
+        d["_sequence"] = d["_sequence"].replace("\n", "")
+
+        assert line == "\n", "final line should be a blank line"
         self.lastlines.append(line)
 
         return d
