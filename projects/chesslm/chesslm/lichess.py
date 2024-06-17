@@ -128,16 +128,18 @@ class LichessPGNReader:
             unit_divisor=1000,
         )
 
-    def tqdm_process(self, func: Callable[[LichessEntry], T]) -> list[T]:
+    def tqdm_process(
+        self, func: Callable[[LichessEntry], T], desc: str = ""
+    ) -> list[T]:
         li: list[T] = []
-        with self.create_tqdm() as pbar:
+        with self.create_tqdm(desc) as pbar:
             for entry in self:
                 pbar.update(self.lastbytes)
                 li.append(func(entry))
         return li
 
     def tqdm_count(
-        self, funcs: dict[str, Callable[[LichessEntry], T]]
+        self, funcs: dict[str, Callable[[LichessEntry], T]], desc: str = ""
     ) -> dict[str, dict[T, int]]:
         """Count entries by iterating over entries with a progress bar
 
@@ -164,7 +166,7 @@ class LichessPGNReader:
 
         sets: dict[str, dict[T, int]] = {key: {} for key in funcs}
 
-        with self.create_tqdm() as pbar:
+        with self.create_tqdm(desc) as pbar:
             for entry in self:
                 pbar.update(self.lastbytes)
                 for key, func in funcs.items():
