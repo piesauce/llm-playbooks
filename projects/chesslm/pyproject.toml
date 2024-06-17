@@ -6,8 +6,10 @@ authors = ["Yenson Lau <yenson.lau@example.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.11,<3.13"
+python = ">=3.10,<3.13"
 llm_playbooks = { path = "../../", develop = true }
+pydantic = "^2.7.4"
+tqdm = "^4.66.4"
 
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.24.4"
