@@ -128,7 +128,7 @@ class LichessPGNReader:
             unit_divisor=1000,
         )
 
-    def tqdm_list(self, func: Callable[[LichessEntry], T]) -> list[T]:
+    def tqdm_process(self, func: Callable[[LichessEntry], T]) -> list[T]:
         li: list[T] = []
         with self.create_tqdm() as pbar:
             for entry in self:
