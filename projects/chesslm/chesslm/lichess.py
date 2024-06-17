@@ -19,8 +19,8 @@ class LichessEntry(BaseModel):
     url: str  # [Site "https://lichess.org/j1dkb5dw"]
     result: str  # [Result "1-0"]
     utc_timestamp: str  # [UTCDate "2012.12.31"] [UTCTime "23:04:57"]
-    white_elo: str  # [WhiteElo "1824"]
-    black_elo: str  # [BlackElo "1973"]
+    white_elo: Optional[int]  # [WhiteElo "1824"]
+    black_elo: Optional[int]  # [BlackElo "1973"]
     time_control: str  # [TimeControl "60+1"]
     termination: str  # [Termination "Normal"]
     sequence: str  # 1. e4 e6 2. d4 b6 3. a3 Bb7 ... 13. Qe8# 1-0
@@ -30,11 +30,10 @@ class LichessEntry(BaseModel):
         return f"https://lichess.org/{self.url}"
 
     @property
-    def elo(self) -> float:
-        if self.white_elo.isnumeric() and self.black_elo.isnumeric():
-            return (int(self.white_elo) + int(self.black_elo)) / 2
-        else:
-            return float("nan")
+    def elo(self) -> Optional[int]:
+        if (self.white_elo is None) or (self.black_elo is None):
+            return None
+        return (self.white_elo + self.black_elo) // 2
 
     @property
     def sequence_has_eval(self) -> bool:
@@ -131,13 +130,15 @@ class LichessPGNReader:
     def nextentry(self) -> Optional[LichessEntry]:
         if not (d := self.nextdict):
             return None
+        white_elo = d["WhiteElo"]
+        black_elo = d["BlackElo"]
         return LichessEntry(
             event=RE_LICHESS_TOURNAMENT.sub("", d["Event"]),
             url=d["Site"].split("/")[-1],
             result=d["Result"],
             utc_timestamp=d["UTCDate"] + " " + d["UTCTime"],
-            white_elo=d["WhiteElo"],
-            black_elo=d["BlackElo"],
+            white_elo=int(white_elo) if white_elo.isnumeric() else None,
+            black_elo=int(black_elo) if black_elo.isnumeric() else None,
             time_control=d["TimeControl"],
             termination=d["Termination"],
             sequence=d["_sequence"],
