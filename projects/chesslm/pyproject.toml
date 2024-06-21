@@ -10,10 +10,16 @@ python = ">=3.10,<3.13"
 llm_playbooks = { path = "../../", develop = true }
 pydantic = "^2.7.4"
 tqdm = "^4.66.4"
+more-itertools = "^10.3.0"
+pyarrow = "^16.1.0"
+pyarrow-stubs = "^10.0.1.7"
+orjson = "^3.10.5"
+zstandard = "^0.22.0"
 
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.24.4"
 ipython = "^8.25.0"
+ipykernel = "^6.29.4"
 
 [build-system]
 requires = ["poetry-core"]

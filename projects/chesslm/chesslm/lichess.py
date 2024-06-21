@@ -1,10 +1,10 @@
 import io
-import os
 import re
-from typing import Callable, Optional, TypeVar
+from typing import Callable, Iterator, Optional, TypeVar
 
 from pydantic import BaseModel
 from tqdm import tqdm
+from zstandard import ZstdDecompressor
 
 RE_ENTRY_METADATA = re.compile(r'\[(\w+) "(.+)"\]\n?')
 RE_SEQUENCE_TURN_METADATA = re.compile(r" \{ \[[^\]]+\] \} ")
@@ -51,27 +51,34 @@ class LichessEntry(BaseModel):
         return self.sequence
 
     @property
-    def ends_in_checkmate(self) -> bool:
-        return self.sequence.endswith(f"# {self.result}")
+    def ends_with_checkmate(self) -> bool:
+        return self.plain_sequence.endswith(f"# {self.result}")
 
 
 class LichessPGNReader:
-    def __init__(self, filepath: str):
-        self.file: io.TextIOWrapper = open(filepath, "r")
-        self.filesize: int = os.path.getsize(filepath)
+    def __init__(self, filepath: str, n_total: Optional[int] = None):
+        self.filepath = filepath
+        self.n_total = n_total
         self.reset()
 
+    def get_stream(self) -> io.TextIOWrapper:
+        if self.filepath.endswith(".pgn"):
+            return open(self.filepath, "r")
+        elif self.filepath.endswith(".pgn.zst"):
+            f = open(self.filepath, "rb")
+            dctx = ZstdDecompressor()
+            reader = dctx.stream_reader(f)
+            return io.TextIOWrapper(reader, encoding="utf-8")
+        else:
+            raise ValueError(f"{self.filepath} is neither a .pgn or .pgn.zst file")
+
     def reset(self):
-        self.file.seek(0)
-        self.bytes_read: int = 0
-        self.last_bytes_read: int = 0
+        self.stream: io.TextIOWrapper = self.get_stream()
         self.lastlines: list[str] = []
 
     @property
     def nextline(self) -> str:
-        line = self.file.readline()
-        self.bytes_read += len(line)
-        return line
+        return self.stream.readline()
 
     @staticmethod
     def parse_metadata(line: str) -> tuple[str, str]:
@@ -83,7 +90,6 @@ class LichessPGNReader:
     @property
     def nextdict(self) -> dict[str, str]:
         d: dict[str, str] = {}
-        self.last_bytes_read = self.bytes_read
         self.lastlines: list[str] = []
 
         # metadata or blank lines
@@ -123,13 +129,9 @@ class LichessPGNReader:
         return d
 
     @property
-    def lastbytes(self) -> int:
-        return self.bytes_read - self.last_bytes_read
-
-    @property
-    def nextentry(self) -> Optional[LichessEntry]:
+    def nextentry(self) -> LichessEntry:
         if not (d := self.nextdict):
-            return None
+            raise ValueError("no entries remaining")
         white_elo = d["WhiteElo"]
         black_elo = d["BlackElo"]
         return LichessEntry(
@@ -149,32 +151,25 @@ class LichessPGNReader:
         return self
 
     def __next__(self) -> LichessEntry:
-        if entry := self.nextentry:
-            return entry
-        else:
+        try:
+            return self.nextentry
+        except ValueError:
             raise StopIteration
 
-    def create_tqdm(self, desc: str = "") -> tqdm:
-        return tqdm(
-            desc=desc,
-            total=self.filesize,
-            unit="B",
-            unit_scale=True,
-            unit_divisor=1000,
-        )
-
-    def tqdm_process(
-        self, func: Callable[[LichessEntry], T], desc: str = ""
-    ) -> list[T]:
-        li: list[T] = []
-        with self.create_tqdm(desc) as pbar:
-            for entry in self:
-                pbar.update(self.lastbytes)
-                li.append(func(entry))
-        return li
+    def create_tqdm(self, limit: Optional[int], desc: str) -> tqdm:
+        if isinstance(limit, int):
+            total = limit
+        elif isinstance(self.n_total, int):
+            total = self.n_total
+        else:
+            total = None
+        return tqdm(total=total, desc=desc, unit_scale=True, unit_divisor=1000)
 
     def tqdm_count(
-        self, funcs: dict[str, Callable[[LichessEntry], T]], desc: str = ""
+        self,
+        funcs: dict[str, Callable[[LichessEntry], T]],
+        limit: Optional[int] = None,
+        desc: str = "",
     ) -> dict[str, dict[T, int]]:
         """Count entries by iterating over entries with a progress bar
 
@@ -199,13 +194,50 @@ class LichessPGNReader:
             dict[str, dict[T, int]]: the counts of the values returned by each function
         """
 
-        sets: dict[str, dict[T, int]] = {key: {} for key in funcs}
+        has_limit = isinstance(limit, int)
+        counts: dict[str, dict[T, int]] = {key: {} for key in funcs}
 
-        with self.create_tqdm(desc) as pbar:
-            for entry in self:
-                pbar.update(self.lastbytes)
+        with self.create_tqdm(limit, desc) as pbar:
+            for i, entry in enumerate(self):
+                if has_limit and i >= limit:
+                    break
+                pbar.update(1)
                 for key, func in funcs.items():
                     func_value = func(entry)
-                    sets[key][func_value] = sets[key].get(func_value, 0) + 1
+                    counts[key][func_value] = counts[key].get(func_value, 0) + 1
 
-        return sets
+        return counts
+
+    def tqdm_map(
+        self,
+        func: Callable[[LichessEntry], T],
+        limit: Optional[int] = None,
+        desc: str = "",
+    ) -> Iterator[T]:
+
+        has_limit = isinstance(limit, int)
+        with self.create_tqdm(limit, desc) as pbar:
+            for i, entry in enumerate(self):
+                if has_limit and i >= limit:
+                    break
+                pbar.update(1)
+                yield func(entry)
+
+    def tqdm_filter(
+        self,
+        func: Callable[[LichessEntry], bool],
+        limit: Optional[int] = None,
+        desc: str = "Retrieved {n} entries",
+    ) -> Iterator[LichessEntry]:
+
+        has_limit = isinstance(limit, int)
+        counter = 0
+        with self.create_tqdm(limit, desc.format(n=counter)) as pbar:
+            for i, entry in enumerate(self):
+                if has_limit and i >= limit:
+                    break
+                pbar.update(1)
+                if func(entry):
+                    counter += 1
+                    pbar.set_description(desc.format(n=counter))
+                    yield entry
