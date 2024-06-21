@@ -232,12 +232,19 @@ class LichessPGNReader:
 
         has_limit = isinstance(limit, int)
         counter = 0
-        with self.create_tqdm(limit, desc.format(n=counter)) as pbar:
+        with self.create_tqdm(limit, desc.format(n=0)) as pbar:
             for i, entry in enumerate(self):
                 if has_limit and i >= limit:
                     break
                 pbar.update(1)
                 if func(entry):
                     counter += 1
-                    pbar.set_description(desc.format(n=counter))
+                    if counter < 1_000_000:
+                        if counter % 1500 == 0:
+                            n = f"{counter // 1000}k"
+                            pbar.set_description(desc.format(n=n))
+                    elif counter % 100_000 == 0:
+                        n = f"{(counter // 100_000) / 10}M"
+                        pbar.set_description(desc.format(n=n))
                     yield entry
+            pbar.set_description(desc.format(n="{:,}".format(counter)))
