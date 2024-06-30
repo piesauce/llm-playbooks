@@ -15,6 +15,7 @@ pyarrow = "^16.1.0"
 pyarrow-stubs = "^10.0.1.7"
 orjson = "^3.10.5"
 zstandard = "^0.22.0"
+torch = "^2.3.1"
 
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.24.4"
