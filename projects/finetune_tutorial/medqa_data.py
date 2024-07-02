@@ -3,14 +3,16 @@ import re
 from typing import Callable, Optional
 
 import torch
-from datasets import Dataset, DatasetDict, load_dataset
+from datasets import DatasetDict, load_dataset
 from rapidfuzz import fuzz
 from rapidfuzz.utils import default_process
 from transformers.modeling_utils import PreTrainedModel
 from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
 
-INSTRUCTION = """Give your answer as a JSON dictionary in the form of {"option": "A-E", "option_text": "corresponding text"}. No yapping."""
+INSTRUCTION = """
+Give your answer as a JSON dictionary with the "option" (a letter from A-E) and the  corresponding"option_text". No yapping.
+""".strip()
 
 
 def load_medqa_data() -> DatasetDict:
@@ -35,9 +37,10 @@ def load_medqa_data() -> DatasetDict:
 def load_train_test_data(
     train_size: int,
     test_size: int,
+    input_limit: Optional[int] = None,
     seed: Optional[int] = None,
     shuffle: bool = True,
-) -> tuple[Dataset, Dataset]:
+) -> DatasetDict:
     """
     train_set[i]
 
@@ -52,6 +55,8 @@ def load_train_test_data(
     E
     """
     dataset = load_medqa_data()
+    if isinstance(input_limit, int):
+        dataset = dataset.filter(lambda sample: len(sample["input"]) <= input_limit)
     dataset = dataset["train"].train_test_split(
         train_size=train_size,
         test_size=test_size,
@@ -59,7 +64,7 @@ def load_train_test_data(
         seed=seed,
     )
     dataset = dataset.remove_columns("instruction")
-    return dataset["train"], dataset["test"]
+    return dataset
 
 
 def reformat_sample(sample: dict[str, str]) -> dict[str, str]:
@@ -202,36 +207,43 @@ def parse_prediction(pred_text: str, passage: str = "") -> str:
         return ""
 
 
-def create_batch_predict(
+def create_predict(
     tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
     model: PreTrainedModel,
     model_alias: str,
+    batch: bool = False,
     generate_kwargs: Optional[dict] = None,
 ) -> Callable[[dict], dict]:
 
     generate_kwargs = generate_kwargs or {}
 
-    def _predict(samples: dict) -> dict:
+    def _batch_predict(samples: dict) -> dict:
         input_ids = tokenizer.apply_chat_template(
             [[{"role": "user", "content": text}] for text in samples["input"]],
             add_generation_prompt=True,
             padding=True,
             return_tensors="pt",
         ).to(model.device)
-
         output_ids = model.generate(input_ids, **generate_kwargs)
-
-        pred_texts = get_generated_texts(input_ids, output_ids)
+        pred_texts = get_generated_texts(tokenizer, input_ids, output_ids)
         samples[f"{model_alias}_pred"] = pred_texts
-        samples[f"{model_alias}_label"] = pred_labels = [
+        samples[f"{model_alias}_label"] = [
             parse_prediction(pred, text)
             for text, pred in zip(samples["input"], pred_texts)
         ]
-        samples[f"{model_alias}_correct"] = [
-            pred_label == true_label
-            for true_label, pred_label in zip(samples["true_label"], pred_labels)
-        ]
-
         return samples
 
-    return _predict
+    def _predict(sample: dict) -> dict:
+        input_ids = tokenizer.apply_chat_template(
+            [{"role": "user", "content": sample["input"]}],
+            add_generation_prompt=True,
+            padding=True,
+            return_tensors="pt",
+        ).to(model.device)
+        output_ids = model.generate(input_ids, **generate_kwargs)
+        pred_text = get_generated_texts(tokenizer, input_ids, output_ids)[0]
+        sample[f"{model_alias}_pred"] = pred_text
+        sample[f"{model_alias}_label"] = parse_prediction(pred_text, sample["input"])
+        return sample
+
+    return _batch_predict if batch else _predict
