@@ -14,7 +14,7 @@ RE_LICHESS_TOURNAMENT = re.compile(r" https://lichess.org/tournament/\w+")
 T = TypeVar("T")
 
 
-class LichessEntry(BaseModel):
+class PGNEntry(BaseModel):
     event: str  # [Event "Rated Classical game"]
     url: str  # [Site "https://lichess.org/j1dkb5dw"]
     result: str  # [Result "1-0"]
@@ -129,12 +129,12 @@ class LichessPGNReader:
         return d
 
     @property
-    def nextentry(self) -> LichessEntry:
+    def nextentry(self) -> PGNEntry:
         if not (d := self.nextdict):
             raise ValueError("no entries remaining")
         white_elo = d["WhiteElo"]
         black_elo = d["BlackElo"]
-        return LichessEntry(
+        return PGNEntry(
             event=RE_LICHESS_TOURNAMENT.sub("", d["Event"]),
             url=d["Site"].split("/")[-1],
             result=d["Result"],
@@ -150,7 +150,7 @@ class LichessPGNReader:
         self.reset()
         return self
 
-    def __next__(self) -> LichessEntry:
+    def __next__(self) -> PGNEntry:
         try:
             return self.nextentry
         except ValueError:
@@ -167,7 +167,7 @@ class LichessPGNReader:
 
     def tqdm_count(
         self,
-        funcs: dict[str, Callable[[LichessEntry], T]],
+        funcs: dict[str, Callable[[PGNEntry], T]],
         limit: Optional[int] = None,
         desc: str = "",
     ) -> dict[str, dict[T, int]]:
@@ -187,8 +187,8 @@ class LichessPGNReader:
             }
 
         Args:
-            funcs (dict[str, Callable[[LichessEntry], T]]): a dictionary of functions
-                that take a LichessEntry and return a hashable that can be counted.
+            funcs (dict[str, Callable[[PGNEntry], T]]): a dictionary of functions
+                that take a PGNEntry and return a hashable that can be counted.
 
         Returns:
             dict[str, dict[T, int]]: the counts of the values returned by each function
@@ -210,7 +210,7 @@ class LichessPGNReader:
 
     def tqdm_map(
         self,
-        func: Callable[[LichessEntry], T],
+        func: Callable[[PGNEntry], T],
         limit: Optional[int] = None,
         desc: str = "",
     ) -> Iterator[T]:
@@ -225,10 +225,10 @@ class LichessPGNReader:
 
     def tqdm_filter(
         self,
-        func: Callable[[LichessEntry], bool],
+        func: Callable[[PGNEntry], bool],
         limit: Optional[int] = None,
         desc: str = "Retrieved {n} entries",
-    ) -> Iterator[LichessEntry]:
+    ) -> Iterator[PGNEntry]:
 
         has_limit = isinstance(limit, int)
         counter = 0

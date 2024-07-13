@@ -122,5 +122,19 @@ class GPT(nn.Module):
         )
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
-        # the LM head shares weights with WTE
-        self.transformer.wte.weight = self.lm_head.weight
+    def forward(self, idx):
+        B, T = idx.size()
+        assert T <= self.config.block_size, (
+            f"sequence length {T} should not exceed block size {self.config.block_size}"
+        )
+
+        pos = torch.arange(0, T, dtype = torch.long, device = idx.device)
+        pos_emb = self.transformer.wpe(pos)  # (T, n_embd)
+        tok_emb = self.transformer.wte(idx)  # (B, T, n_embd)
+
+        x = tok_emb + pos_emb
+        for block in self.transformer.h:
+            x = block(x)
+        x = self.transformer. ln_f(x)
+        logits = self.lm_head(x)  # (B, T, vocab_size)
+        return logits
