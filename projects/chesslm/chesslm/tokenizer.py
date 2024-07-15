@@ -20,21 +20,18 @@ SPECIAL_TOKEN_IDS = {UNK_TOKEN: UNK_TOKEN_ID}
 
 class PGNTokenizer:
     def __init__(self, vocab: Optional[list[str]] = None):
-        self.vocab = PGN_VOCAB.copy() if vocab is None else vocab.copy()
-        self.word_ids = SPECIAL_TOKEN_IDS.copy()
-        self.word_ids |= {word: i for i, word in enumerate(self.vocab)}
+        self.vocab = (PGN_VOCAB if vocab is None else vocab).copy()
+        self.word_ids = {word: i for i, word in enumerate(self.vocab)}
+        self.word_ids = SPECIAL_TOKEN_IDS | self.word_ids
 
     @cached_property
-    def re_findall(self) -> re.Pattern:
+    def _re(self) -> re.Pattern:
         re_special_chars = re.compile(r"([\+\*\?\^\$\\\.\[\]\{\}\(\)\|\/])")
         re_words = sorted(re_special_chars.sub(r"\\\1", word) for word in self.vocab)
         return re.compile("(" + "|".join(re_words[::-1]) + r"|[^ ]+" ")")
 
     def encode(self, text: str) -> list[int]:
-        return [
-            self.word_ids.get(match, UNK_TOKEN_ID)
-            for match in self.re_findall.findall(text)
-        ]
+        return [self.word_ids.get(w, UNK_TOKEN_ID) for w in self._re.findall(text)]
 
     @cached_property
     def trie(self) -> pygtrie.CharTrie:
