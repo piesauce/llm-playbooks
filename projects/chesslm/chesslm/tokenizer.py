@@ -13,26 +13,28 @@ PGN_VOCAB += ["O-O", "O-O-O", "="]  # castling / promotion
 PGN_VOCAB += [" ", "x", "+", "#"]  # capture / check(mate)
 PGN_VOCAB += ["0-1", "1-0", "1/2-1/2"]  # outcome
 
+UNK_TOKEN = "<unk>"
+UNK_TOKEN_ID = -1
+SPECIAL_TOKEN_IDS = {UNK_TOKEN: UNK_TOKEN_ID}
+
 
 class PGNTokenizer:
     def __init__(self, vocab: Optional[list[str]] = None):
-        self.vocab = PGN_VOCAB if vocab is None else vocab
-        self.word_ids = {word: i for i, word in enumerate(self.vocab)}
+        self.vocab = PGN_VOCAB.copy() if vocab is None else vocab.copy()
+        self.word_ids = SPECIAL_TOKEN_IDS.copy()
+        self.word_ids |= {word: i for i, word in enumerate(self.vocab)}
 
     @cached_property
-    def re_vocab(self) -> re.Pattern:
+    def re_findall(self) -> re.Pattern:
         re_special_chars = re.compile(r"([\+\*\?\^\$\\\.\[\]\{\}\(\)\|\/])")
         re_words = sorted(re_special_chars.sub(r"\\\1", word) for word in self.vocab)
-        return re.compile("(" + "|".join(re_words[::-1]) + ")")
+        return re.compile("(" + "|".join(re_words[::-1]) + r"|[^ ]+" ")")
 
     def encode(self, text: str) -> list[int]:
-        token_ids: list[int] = []
-        while text:
-            if not (match := self.re_vocab.match(text)):
-                raise ValueError(f"could not find next token for '{text}'")
-            token_ids.append(self.word_ids[match.group()])
-            text = text[match.end() :]
-        return token_ids
+        return [
+            self.word_ids.get(match, UNK_TOKEN_ID)
+            for match in self.re_findall.findall(text)
+        ]
 
     @cached_property
     def trie(self) -> pygtrie.CharTrie:
