@@ -1,5 +1,8 @@
 import re
+from functools import cached_property
 from typing import Optional
+
+import pygtrie
 
 PGN_VOCAB: list[str] = [" "]  # spaces
 PGN_VOCAB += [str(i) for i in range(10)]  # 0-9
@@ -16,18 +19,35 @@ class PGNTokenizer:
         self.vocab = PGN_VOCAB if vocab is None else vocab
         self.word_ids = {word: i for i, word in enumerate(self.vocab)}
 
+    @cached_property
+    def re_vocab(self) -> re.Pattern:
         re_special_chars = re.compile(r"([\+\*\?\^\$\\\.\[\]\{\}\(\)\|\/])")
         re_words = sorted(re_special_chars.sub(r"\\\1", word) for word in self.vocab)
-        self.re_vocab = re.compile("(" + "|".join(re_words[::-1]) + ")")
+        return re.compile("(" + "|".join(re_words[::-1]) + ")")
 
-    def encode(self, seq: str) -> list[int]:
+    def encode(self, text: str) -> list[int]:
         token_ids: list[int] = []
-        while seq:
-            if not (match := self.re_vocab.match(seq)):
-                raise ValueError(f"could not find next token for '{seq}'")
+        while text:
+            if not (match := self.re_vocab.match(text)):
+                raise ValueError(f"could not find next token for '{text}'")
             word = match.group(0)
             token_ids.append(self.word_ids[word])
-            seq = seq[len(word) :]
+            text = text[len(word) :]
+        return token_ids
+
+    @cached_property
+    def trie(self) -> pygtrie.CharTrie:
+        return pygtrie.CharTrie(self.word_ids)
+
+    def trie_encode(self, text: str) -> list[int]:
+        # A "ground truth" longest-match encoder. Very slow, only use for debugging.
+        token_ids: list[int] = []
+        while text:
+            word, i = self.trie.longest_prefix(text)
+            if not word:
+                raise ValueError(f"could not find next token for '{text}'")
+            token_ids.append(i)
+            text = text[len(word) :]
         return token_ids
 
     def decode(self, ids: list[int]) -> str:
