@@ -1,8 +1,8 @@
 import re
 from typing import Optional
 
-PGN_VOCAB = [" "]
-PGN_VOCAB += [chr(i) for i in range(48, 58)]  # 0-9
+PGN_VOCAB: list[str] = [" "]  # spaces
+PGN_VOCAB += [str(i) for i in range(10)]  # 0-9
 PGN_VOCAB += [chr(i) for i in range(97, 105)]  # a-h
 PGN_VOCAB += ["B", "K", "N", "Q", "R"]  # pieces
 PGN_VOCAB += [f"{x}." for x in range(1, 51)]  # start of turn (up to 50 moves)
