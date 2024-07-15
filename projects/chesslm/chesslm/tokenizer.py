@@ -23,7 +23,7 @@ class PGNTokenizer:
     def re_vocab(self) -> re.Pattern:
         re_special_chars = re.compile(r"([\+\*\?\^\$\\\.\[\]\{\}\(\)\|\/])")
         re_words = sorted(re_special_chars.sub(r"\\\1", word) for word in self.vocab)
-        return re.compile("|".join(re_words[::-1]))
+        return re.compile("(" + "|".join(re_words[::-1]) + ")")
 
     def encode(self, text: str) -> list[int]:
         token_ids: list[int] = []
