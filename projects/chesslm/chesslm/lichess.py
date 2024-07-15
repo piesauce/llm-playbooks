@@ -54,6 +54,11 @@ class LichessPGNEntry(BaseModel):
     def ends_with_checkmate(self) -> bool:
         return self.plain_sequence.endswith(f"# {self.result}")
 
+    @property
+    def total_moves(self) -> int:
+        assert (match := re.search(r"\.(\d+)", self.plain_sequence[::-1]))
+        return int(match.group(1)[::-1])
+
 
 class LichessPGNReader:
     def __init__(self, filepath: str, n_total: Optional[int] = None):
