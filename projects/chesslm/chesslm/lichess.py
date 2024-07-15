@@ -9,6 +9,7 @@ from zstandard import ZstdDecompressor
 RE_ENTRY_METADATA = re.compile(r'\[(\w+) "(.+)"\]\n?')
 RE_SEQUENCE_TURN_METADATA = re.compile(r" \{ \[[^\]]+\] \} ")
 RE_SEQUENCE_TURN_CONTINUATION = re.compile(r" \d+\.{3}")
+RE_MISTAKE = re.compile(r"\?[\?\!]? ")
 RE_LICHESS_TOURNAMENT = re.compile(r" https://lichess.org/tournament/\w+")
 
 T = TypeVar("T")
@@ -47,7 +48,9 @@ class LichessPGNEntry(BaseModel):
     def plain_sequence(self) -> str:
         if self.sequence_has_metadata:
             sequence = RE_SEQUENCE_TURN_METADATA.sub(" ", self.sequence)
-            return RE_SEQUENCE_TURN_CONTINUATION.sub(" ", sequence)
+            sequence = RE_SEQUENCE_TURN_CONTINUATION.sub(" ", sequence)
+            sequence = RE_MISTAKE.sub(" ", sequence)
+            return sequence
         return self.sequence
 
     @property
