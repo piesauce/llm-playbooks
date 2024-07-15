@@ -8,8 +8,8 @@ PGN_VOCAB: list[str] = [" "]  # spaces
 PGN_VOCAB += [str(i) for i in range(10)]  # 0-9
 PGN_VOCAB += [chr(i) for i in range(97, 105)]  # a-h
 PGN_VOCAB += ["B", "K", "N", "Q", "R"]  # pieces
-PGN_VOCAB += [f"{x}." for x in range(1, 51)]  # start of turn (up to 50 moves)
-PGN_VOCAB += ["O-O", "O-O-O"]  # castling
+PGN_VOCAB += [f"{x}." for x in range(51)]  # start of turn (up to 50 moves)
+PGN_VOCAB += ["O-O", "O-O-O", "="]  # castling / promotion
 PGN_VOCAB += [" ", "x", "+", "#"]  # capture / check(mate)
 PGN_VOCAB += ["0-1", "1-0", "1/2-1/2"]  # outcome
 
@@ -30,9 +30,8 @@ class PGNTokenizer:
         while text:
             if not (match := self.re_vocab.match(text)):
                 raise ValueError(f"could not find next token for '{text}'")
-            word = match.group(0)
-            token_ids.append(self.word_ids[word])
-            text = text[len(word) :]
+            token_ids.append(self.word_ids[match.group()])
+            text = text[match.end() :]
         return token_ids
 
     @cached_property
