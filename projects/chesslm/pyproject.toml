@@ -18,6 +18,8 @@ zstandard = "^0.22.0"
 torch = "^2.3.1"
 matplotlib = "^3.9.1"
 pygtrie = "^2.5.0"
+transformers = "^4.42.4"
+tiktoken = "^0.7.0"
 
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.24.4"
