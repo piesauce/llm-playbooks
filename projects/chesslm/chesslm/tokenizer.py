@@ -4,7 +4,13 @@ from typing import Optional
 
 import pygtrie
 
-PGN_VOCAB: list[str] = [" "]  # spaces
+UNK_TOKEN = "<unk>"
+UNK_TOKEN_ID = 0
+PADDING_TOKEN = "<pad>"
+PADDING_TOKEN_ID = 1
+PGN_VOCAB: list[str] = [UNK_TOKEN, PADDING_TOKEN]
+
+PGN_VOCAB += [" "]  # spaces
 PGN_VOCAB += [str(i) for i in range(10)]  # 0-9
 PGN_VOCAB += [chr(i) for i in range(97, 105)]  # a-h
 PGN_VOCAB += ["B", "K", "N", "Q", "R"]  # pieces
@@ -13,16 +19,11 @@ PGN_VOCAB += ["O-O", "O-O-O", "="]  # castling / promotion
 PGN_VOCAB += [" ", "x", "+", "#"]  # capture / check(mate)
 PGN_VOCAB += ["0-1", "1-0", "1/2-1/2"]  # outcome
 
-UNK_TOKEN = "<unk>"
-UNK_TOKEN_ID = -1
-SPECIAL_TOKEN_IDS = {UNK_TOKEN: UNK_TOKEN_ID}
-
 
 class PGNTokenizer:
     def __init__(self, vocab: Optional[list[str]] = None):
         self.vocab = (PGN_VOCAB if vocab is None else vocab).copy()
         self.word_ids = {word: i for i, word in enumerate(self.vocab)}
-        self.word_ids = SPECIAL_TOKEN_IDS | self.word_ids
 
     @cached_property
     def _re(self) -> re.Pattern:
