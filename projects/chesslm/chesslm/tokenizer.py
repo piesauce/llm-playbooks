@@ -38,10 +38,16 @@ class PGNTokenizer:
 
     @cached_property
     def _re(self) -> re.Pattern:
+        # treat special characters so they make sense
         re_special_chars = re.compile(r"([\+\*\?\^\$\\\.\[\]\{\}\(\)\|\/])")
-        re_words = sorted(re_special_chars.sub(r"\\\1", word) for word in self.vocab)
+        vocab = [re_special_chars.sub(r"\\\1", word) for word in self.vocab]
+
+        # sort the vocab by length so longest words are prioritized first
+        re_words = sorted(vocab)[::-1]
+
+        # combine words with catchall match at the end and compile
         re_unk = r"|[^ ]+"
-        return re.compile("(" + "|".join(re_words[::-1]) + re_unk + ")")
+        return re.compile("(" + "|".join(re_words) + re_unk + ")")
 
     def findall_encode(self, text: str) -> list[int]:
         return [self.word_ids.get(w, UNK_TOKEN_ID) for w in self._re.findall(text)]
