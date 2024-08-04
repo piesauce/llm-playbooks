@@ -4,28 +4,32 @@ from typing import Optional
 
 import pygtrie
 
+# Special tokens
 UNK_TOKEN = "<unk>"
 PAD_TOKEN = "<pad>"
 PGN_VOCAB: list[str] = [PAD_TOKEN, UNK_TOKEN]
-
 UNK_TOKEN_ID = PGN_VOCAB.index(UNK_TOKEN)
 PAD_TOKEN_ID = PGN_VOCAB.index(PAD_TOKEN)
 
+# Start token, end tokens, and spaces
 START_TOKEN = "1."  # game start
+END_TOKENS = ["0-1", "1-0", "1/2-1/2"]  # outcome
 PGN_VOCAB += [START_TOKEN]
+PGN_VOCAB += END_TOKENS
+PGN_VOCAB += [" "]  # spaces
+START_TOKEN_ID = PGN_VOCAB.index(START_TOKEN)
+END_TOKEN_IDS = [PGN_VOCAB.index(tok) for tok in END_TOKENS]
+
+# Start of turn
 PGN_VOCAB += [f"{x}." for x in range(2, 10)]  # start of turn (2-10 moves)
 PGN_VOCAB += [f"{x}." for x in range(11, 51)]  # start of turn (up to 50 moves)
 PGN_VOCAB += ["0."]  # start of turn catchall (60, 70, etc.)
 
-END_TOKENS = ["0-1", "1-0", "1/2-1/2"]  # outcome
-PGN_VOCAB += END_TOKENS
-
-START_TOKEN_ID = PGN_VOCAB.index(START_TOKEN)
-END_TOKEN_IDS = [PGN_VOCAB.index(tok) for tok in END_TOKENS]
-
-PGN_VOCAB += [" "]  # spaces
+# Numbers and letters (for board positions)
 PGN_VOCAB += [str(i) for i in range(10)]  # 0-9
 PGN_VOCAB += [chr(i) for i in range(97, 105)]  # a-h
+
+# Misc.
 PGN_VOCAB += ["B", "K", "N", "Q", "R"]  # pieces
 PGN_VOCAB += ["O-O", "O-O-O", "="]  # castling / promotion
 PGN_VOCAB += [" ", "x", "+", "#"]  # capture / check(mate)
