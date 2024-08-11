@@ -1,8 +1,8 @@
 # Temporary home for a GPT implementation; expect to move this up to llm_playbooks later
 # Largely follows the tutorial from https://github.com/karpathy/build-nanogpt/
 
-import math
-from typing import Literal, get_args
+import inspect
+from typing import Literal, Optional, get_args
 
 import torch
 import torch.nn as nn
@@ -64,13 +64,14 @@ class CausalSelfAttention(nn.Module):
         k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
 
-        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))  # (B, nh, T, T)
-        att = att.masked_fill(self.bias[:, :, T, T] == 0, float("-inf"))
-        att = F.softmax(att, dim=-1)
+        # flash attention
+        y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
 
-        y = att @ v  # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
+        # re-assemble all head outputs side by side
         y = y.transpose(1, 2).contiguous().view(B, T, C)
-        y = self.c_proj(y)  # (B, T, C) x (C, C) -> (B, T, C)
+
+        # output projection
+        y = self.c_proj(y)
 
         return y
 
@@ -104,8 +105,11 @@ class Block(nn.Module):
 
 
 class GPT(nn.Module):
-    def __init__(self, config: GPTConfig):
+    def __init__(self, config: Optional[GPTConfig] = None):
         super().__init__()
+
+        if config is None:
+            config = GPTConfig()
         self.config = config
 
         self.transformer = nn.ModuleDict(
@@ -135,8 +139,8 @@ class GPT(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, idx: torch.Tensor):
-        B, T = idx.size()
+    def forward(self, idx: torch.Tensor, targets: Optional[torch.Tensor] = None):
+        _, T = idx.size()
         assert (
             T <= self.config.block_size
         ), f"sequence length {T} should not exceed block size {self.config.block_size}"
@@ -151,7 +155,11 @@ class GPT(nn.Module):
         x = self.transformer.ln_f(x)
 
         logits = self.lm_head(x)  # (B, T, vocab_size)
-        return logits
+        loss = None
+
+        if targets is not None:
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
+        return logits, loss
 
     @classmethod
     def from_pretrained(cls, model_type: PretrainedGPT2Model):
@@ -218,3 +226,35 @@ class GPT(nn.Module):
                     sd[k].copy_(sd_hf[k])
 
         return model
+
+    def configure_optimizers(self, weight_decay, learning_rate, device_type):
+        # start with all of the candidate parameters (that require grad)
+        param_dict = {pn: p for pn, p in self.named_parameters()}
+        param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad}
+
+        # create optim groups. Any parameters that is 2D will be weight decayed, otherwise no.
+        # i.e. all weight tensors in matmuls + embeddings decay, all biases and layernorms don't.
+        decay_params = [p for _, p in param_dict.items() if p.dim() >= 2]
+        nodecay_params = [p for _, p in param_dict.items() if p.dim() < 2]
+        optim_groups = [
+            {"params": decay_params, "weight_decay": weight_decay},
+            {"params": nodecay_params, "weight_decay": 0.0},
+        ]
+        num_decay_params = sum(p.numel() for p in decay_params)
+        num_nodecay_params = sum(p.numel() for p in nodecay_params)
+        print(
+            f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters"
+        )
+        print(
+            f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters"
+        )
+
+        # Create AdamW optimizer and use the fused version if it is available
+        fused_available = "fused" in inspect.signature(torch.optim.AdamW).parameters
+        use_fused = fused_available and device_type == "cuda"
+        print(f"using fused AdamW: {use_fused}")
+        optimizer = torch.optim.AdamW(
+            optim_groups, lr=learning_rate, betas=(0.9, 0.95), eps=1e-8, fused=use_fused
+        )
+
+        return optimizer
