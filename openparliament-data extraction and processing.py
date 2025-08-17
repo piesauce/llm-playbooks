@@ -232,79 +232,52 @@ mp_statements = hansards_statement_clean.merge(
     how='inner'
 )
 
-mp_statements.drop(columns=['id_x','id_y'], errors='ignore', inplace=True)
-mp_statements.head()
+mp_statements.drop(columns=['id_x', 'id_y'], errors='ignore', inplace=True)
 
-test_df = mp_statements.groupby('politician_id', sort=True)
+mp_statements['time'] = pd.to_datetime(mp_statements['time'], errors='coerce', utc=True)
 
-mp_statements['time'] = pd.to_datetime(
-    mp_statements['time'],
-    errors='coerce',
-    utc=True
-)
+mp_outdir = "mp_speeches_json"
+os.makedirs(mp_outdir, exist_ok=True)
 
-mp_statements['time'] = pd.to_datetime(mp_statements['time'])
-
-output = []
-
+count = 0
 for pid, grp in mp_statements.groupby('politician_id', sort=True):
     grp = grp.sort_values('time')
-    name = grp['name'].iloc[0]
+
+    name = grp['name'].dropna().iloc[0] if grp['name'].notna().any() else "unknown"
+    safe_name = create_safe_filename(name)
+
+    try:
+        pid_str = str(int(pid)) if (pd.notna(pid) and float(pid).is_integer()) else str(pid)
+    except Exception:
+        pid_str = str(pid)
 
     speeches = []
     for row in grp.itertuples(index=False):
         speeches.append({
-            'document_id': row.document_id,
-            'h1_en':       row.h1_en,
-            'h2_en':       row.h2_en,
-            'content_en':  row.content_en,
-            'time':        row.time.isoformat()
+            'document_id': getattr(row, 'document_id', None),
+            'h1_en':       getattr(row, 'h1_en', None),
+            'h2_en':       getattr(row, 'h2_en', None),
+            'content_en':  getattr(row, 'content_en', None),
+            'time':        getattr(row, 'time', None)
         })
-    
+
     record = {
         'politician_id': pid,
         'name':          name,
         'speeches':      speeches
     }
-    
-    output.append(normalize(record))
 
-output_path = "politicians_speeches.json"
-with open(output_path, "w", encoding="utf-8") as f:
-    json.dump(output, f, ensure_ascii=False, indent=2)
+    clean_record = normalize(record)
 
-print(f"Wrote {len(output)} records to {output_path}")
+    filename = f"{pid_str}_{safe_name}.json"
+    filepath = os.path.join(mp_outdir, filename)
 
-## Exporting each MP's speeches into a different json file
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(clean_record, f, ensure_ascii=False, indent=2)
 
-mp_outdir = "mp_speeches_json"
-os.makedirs(mp_outdir, exist_ok=True)
+    count += 1
+    # optional progress print
+    if count % 50 == 0:
+        print(f"Wrote {count} politician files so far...")
 
-for pid, grp in mp_statements.groupby('politician_id', sort=True):
-    grp = grp.sort_values("time")
-    
-    name = grp["name"].iloc[0] if len(grp) and pd.notna(grp['name'].iloc[0]) else "unknown"
-    safe_name = create_safe_filename(name)
-
-    try:
-        if pd.notna(pid) and float(pid).is_integer():
-            pid_str = str(int(pid))
-
-        else:
-            pid_str = str(pid)
-
-    except Exception:
-        pid_str = str(pid)
-
-
-clean_record = normalize(record)
-
-filename = f"{pid_str}_{safe_name}.json"
-filepath = os.path.join(mp_outdir, filename)
-
-# write one file per MP
-with open(filepath, "w", encoding="utf-8") as f:
-    json.dump(clean_record, f, ensure_ascii=False, indent=2)
-
-# optional progress print
-print(f"Wrote {filepath}")
+print(f"Wrote {count} politician files to {mp_outdir}")
