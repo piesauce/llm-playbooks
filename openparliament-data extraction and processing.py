@@ -1,27 +1,25 @@
-# %%
-import pandas as pd
-from sqlalchemy import create_engine, inspect, text
-from IPython.display import display
-import json
 import os
 import re
+import json
 import string
+import unicodedata
 import datetime
-import numpy as np
-import pandas as pd 
 
-# %%
+import numpy as np
+import pandas as pd
+from sqlalchemy import create_engine, inspect
+
 #Connect to database
 engine = create_engine("postgresql://joey@localhost:5432/openparliament2")
 inspector = inspect(engine)
 print(inspector.get_table_names(schema="public"))
 
-#DATA EXPLORATION 
+#1. DATA EXPLORATION 
 
 for tbl in inspector.get_table_names(schema="public"):
     print(f"\n=== {tbl} ===")
     df = pd.read_sql(f"SELECT * FROM {tbl} LIMIT 5", engine)
-    display(df)
+    print(df)
 
 #Helper code to extract tables with content relating to proceedings and analyze tables of interest 
 
@@ -43,14 +41,6 @@ def investigate_table(tbl):
     print("Columns:")
     print(list(df.columns))
     
-    # # column types
-    # print("\nColumn dtypes:")
-    # for col, dtype in df.dtypes.items():
-    #     print(f" - {col}: {dtype}")
-    
-    # # show the sample rows
-    # display(df)
-
 for table in tables_with_proceedings:
     investigate_table(table)
 
@@ -79,10 +69,10 @@ clean_dfs = [name for name in globals() if name.endswith('_clean')]
 
 for df_name in clean_dfs:
     print(f"\n--- {df_name} ---")
-    display(globals()[df_name].head(3))
+    print(globals()[df_name].head(3))
 
 
-#DATA AGGREGATION
+#2. DATA AGGREGATION
 #Helper function to normalize values
 def normalize(o):
     if isinstance(o, datetime.datetime):
@@ -101,7 +91,7 @@ def normalize(o):
         return None
     return o
 
-# HANSARDS STATEMENT AGGREGATION
+#2A. HANSARDS STATEMENT AGGREGATION
 
 df_statement_per_document = (
     hansards_statement_clean
@@ -113,7 +103,7 @@ df_statement_per_document = (
     .reset_index(name='hansards_statements')
 )
 
-# BILLS AGGREGATION
+#2B. BILLS AGGREGATION
 
 df_docids_agg = (
     bills_billtext_clean
@@ -151,18 +141,87 @@ df_bills_merged = (
     .merge(df_votes_agg, on='bill_id', how='left')
 )
 
-# 3) Convert any missing entries into empty lists
+#Convert any missing entries into empty lists
 for col in ('text_docid','bill_texts','vote_questions'):
     df_bills_merged[col] = df_bills_merged[col].apply(lambda x: x if isinstance(x, list) else [])
 
-# 4) Preview
 df_bills_merged.head()
+
+
+final_dfs = ['df_bills_merged', 'df_statement_per_document']
+
+
+#Export final dataframes for bills
+
+output_dir = os.getcwd()
+os.makedirs(output_dir, exist_ok=True)
+
+for df_name in final_dfs:
+    # Retrieve the DataFrame object
+    df = globals().get(df_name)
+    if df is None:
+        print(f"DataFrame '{df_name}' not found.")
+        continue
+
+    docs = df.to_dict(orient='records')
+    clean_docs = [normalize(d) for d in docs]
+
+    filename = os.path.join(output_dir, f'{df_name}.json')
+    with open(filename, 'w', encoding='utf-8') as f:
+        json.dump(clean_docs, f, ensure_ascii=False, indent=2)
+
+    print(f"Written {len(clean_docs)} records to {filename}")
 
 # Show current working directory
 print("Exporting to directory:", os.getcwd())
 
-# %%
-# AGGREGATION OF MP SPEECHES IN CHRONOLOGICAL ORDER
+
+# 3. SEPARATION OF BILLS INTO INDIVIDUAL TEXT FILES
+
+def create_safe_filename(name: str, max_length: int=100) -> str:
+    """Make a filesystem-safe lowercase filename based on `name`."""
+    if not isinstance(name, str):
+        name = str(name) if pd.notna(name) else "unknown"
+    # lowercase, replace whitespace with underscore
+    name = name.lower().strip()
+    name = re.sub(r"\s+", "_", name)
+    # remove punctuation
+    punct = re.escape(string.punctuation)
+    name = re.sub(rf"[{punct}]+", "", name)
+    # collapse multiple underscores and trim
+    name = re.sub(r"_+", "_", name).strip("_")
+    return name[:max_length] or "unknown"
+
+
+output_dir = "bills_json"
+os.makedirs(output_dir, exist_ok=True)
+
+# Iterate and write one JSON per bill
+for idx, row in df_bills_merged.iterrows():
+    # Build safe and unique filename
+    safe_title = create_safe_filename(row["name_en"])
+    filename = f"{row.bill_id}_{safe_title}.json"
+    filepath = os.path.join(output_dir, filename)
+
+    bill_record = {
+        "bill_id":        row.bill_id,
+        "name_en":        row.name_en,
+        "status_code":    row.status_code,
+        "law":            row.law,
+        "text_docid":     row.text_docid,
+        "bill_texts":     row.bill_texts,
+        "vote_questions": row.vote_questions,
+    }
+
+    clean_record = normalize(bill_record)
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(clean_record, f, ensure_ascii=False, indent=2)
+
+    print(f"Wrote {filepath}")
+
+
+# 4. AGGREGATION OF MP SPEECHES IN CHRONOLOGICAL ORDER
 
 core_politician_clean['id'] = core_politician_clean['id'].astype(float) 
 
@@ -216,74 +275,36 @@ with open(output_path, "w", encoding="utf-8") as f:
 
 print(f"Wrote {len(output)} records to {output_path}")
 
+## Exporting each MP's speeches into a different json file
 
-# %%
-# %%
-final_dfs = ['df_bills_merged', 'df_statement_per_document']
+mp_outdir = "mp_speeches_json"
+os.makedirs(mp_outdir, exist_ok=True)
 
-
-for df_name in final_dfs:
-    # Retrieve the DataFrame object
-    df = globals().get(df_name)
-    if df is None:
-        print(f"DataFrame '{df_name}' not found.")
-        continue
-
-    # Convert to list of dicts
-    docs = df.to_dict(orient='records')
+for pid, grp in mp_statements.groupby('politician_id', sort=True):
+    grp = grp.sort_values("time")
     
-    # Filename to write
-    filename = f'{df_name}.json'
-    
-    # Write out to JSON
-    with open(filename, 'w', encoding='utf-8') as f:
-        json.dump(
-            output,
-            f,
-            ensure_ascii=False,
-            indent=2,
-            default=lambda o: o.isoformat() if isinstance(o, datetime.datetime) else str(o)
-        )
+    name = grp["name"].iloc[0] if len(grp) and pd.notna(grp['name'].iloc[0]) else "unknown"
+    safe_name = create_safe_filename(name)
 
-    
-    print(f"Written {len(docs)} records to {filename}")
+    try:
+        if pd.notna(pid) and float(pid).is_integer():
+            pid_str = str(int(pid))
 
-# %%
-# SEPARATION OF BILLS INTO INDIVIDUAL TEXT FILES
+        else:
+            pid_str = str(pid)
 
-def create_safe_filename(name: str, max_length: int = 100) -> str:
-    name = name.lower().replace(" ", "_")
-    punct = re.escape(string.punctuation)
-    name = re.sub(rf"[{punct}]+", "", name)
-    return name[:max_length]
+    except Exception:
+        pid_str = str(pid)
 
 
-# 3. Prepare output directory
-output_dir = "bills_json"
-os.makedirs(output_dir, exist_ok=True)
+clean_record = normalize(record)
 
-# 4. Iterate and write one JSON per bill
-for idx, row in df_bills_merged.iterrows():
-    # Build safe and unique filename
-    safe_title = create_safe_filename(row["name_en"])
-    filename = f"{row.bill_id}_{safe_title}.json"
-    filepath = os.path.join(output_dir, filename)
+filename = f"{pid_str}_{safe_name}.json"
+filepath = os.path.join(mp_outdir, filename)
 
-    bill_record = {
-        "bill_id":        row.bill_id,
-        "name_en":        row.name_en,
-        "status_code":    row.status_code,
-        "law":            row.law,
-        "text_docid":     row.text_docid,
-        "bill_texts":     row.bill_texts,
-        "vote_questions": row.vote_questions,
-    }
+# write one file per MP
+with open(filepath, "w", encoding="utf-8") as f:
+    json.dump(clean_record, f, ensure_ascii=False, indent=2)
 
-    clean_record = normalize(bill_record)
-
-    with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(clean_record, f, ensure_ascii=False, indent=2)
-
-    print(f"Wrote {filepath}")
-
-
+# optional progress print
+print(f"Wrote {filepath}")
